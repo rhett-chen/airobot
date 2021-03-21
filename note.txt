@@ -1,0 +1,153 @@
+1. cfg定义了机械臂的基础信息，
+ 1.1 assets/yumi_arm.py
+   定义了机械臂创建时 base，reset pos/ori，想要修改朝向，就在这里改
+ 1.1 src/airobot/cfgs/assets/yumi_dual_arm.py
+     定义了 _C.HAS_CAMERA  _C.HAS_ARM  _C.HAS_EETOOL，
+     还包括joint name，right/left_arm_home_position，left/right_arm_HAS_ARM，left/right_arm__HAS_CAMER等信息，具体区分左右臂
+     以及  right/left_end_effector_frame以及frame对应的joint名称，具体：
+        _C.ARM.LEFT.ARM.ROBOT_EE_FRAME = 'yumi_link_7_l'
+        _C.ARM.LEFT.ARM.ROBOT_EE_FRAME_JOINT = 'yumi_joint_6_l'
+  1.2 src/airobot/assets/yumi_parraller_jaw.py 定义了gripper一些信息，包括open/close angle，max force。
+  1.3 src/airobot/cfgs/yumi_grippers_cfg.py 该文件并不是专门定义gripper的，yumi_gripper代表的意义是yumi机械臂+gripper，
+       该文件定义了对应的urdf文件 yumi_grippers.urdf，该urdf文件包含机械臂和gripper，而yumi.urdf只有机械臂，没有gripper。
+       还定义了righ/left_endEffectorTool_joint_name，也就是gripper对应的joint名称
+       还有left/right_endEffector对象，对应着1.2中那个文件
+  1.4 assets/pybullet_camera.py
+      定义了相机的相关参数，在 yumi_grippers_cfg.py中，通过调用get_sim_cam_cfg函数得到相机的相关参数传入机械臂类中。
+      参数包括图片的宽高，深度图的scale
+
+2. src/__init__.py 定义了整体robot类，是整体的base，所有robot相关特性都要从这里来访问。
+   因此仿真时，第一句通过 robot = Robot('robot_name') 来创建机器人，给定不同的名字创建不同类型的机器人，针对yumi，
+    robot = Robot('yumi_grippers')
+ 2.1 在robot类中，首先根据robot name读取相关cfg文件，cfg文件定义了机械臂信息，如关节名称、数量等。
+ 2.2 整个库是具有仿真和真是机械臂控制功能，仿真通过有pybullet，真实则通过ros，通过参数 pb=True 来区分。
+     仿真时设置 pb=True，则会创建pybullet对象。
+ 2.3 定义了robot后，为robot添加arm和end effector信息、基座信息、相机信息。
+     其中，arm和end effector信息统一定义为self.arm，同理通过self.base self.camera访问基座和相机。
+ 2.4 最后定义了Logger，包括info、error、warning等。
+
+3. src/arm 文件夹定义了机械臂相关属性，arm.py定义了基本单臂机械臂属性；
+    single_arm_pybullet.py定义了单臂机械臂属性，继承于Arm；
+    dual_arm_pybullet.py定义了双臂机械臂的基本属性，继承于arm类，其本质上是两个single arm组合，因此很多操作回跳转到single arm对应函数执行
+    对于yumi，在yumi_pybullet.py文件中，继承了dual_arm_pybullet类，针对特定的yumi双臂机械臂进行了部分属性补充。
+ 3.1 arm类定义的单臂机械臂属性
+   3.1.1 首先要区分一下是否包含end effector，有的话通过self.eetool来定义和访问
+   3.1.2 go_home函数，使机械臂回到预定位置，这个预定位置就是1中cfg中定义的home position，NotImplementedError
+   3.1.3 set_jpos函数，给定一个joint position，直接设定机械臂各关节到达该位置，也可以单独只设定某一个关节的值，NotImplementedError
+   3.1.4 set_jvel函数，上面是设定joint position，这个是设定velocity，也即joint position的变化，默认是一个list一次设定所有
+          关节，也可以像上面那样给定一个具体的关节的名字，只设定一个关节。NotImplementedError
+   3.1.5 set_jtorq函数，也是直接设定关节，具体含义还未知
+   3.1.6 set_ee_pose函数，移动end effector到一个特定的pose，需要给出pos和orientation，ori可以是欧拉角、四元数或者旋转矩阵，NotImplementedError
+   3.1.7 move_ee_xyz函数，沿一个固定的线移动end effector，不改变其朝向，所以只用各处delta xyz即可
+   3.1.8 get_jpos函数，返回所有的joint position，或者返回给定名字的joint的position
+   3.1.9 get_jvel函数，敢上面差不多，只不过返回的是速度
+   3.1.10 get_jtorq函数，跟上面差不多，返回的扭矩(到底什么含义)
+   3.1.11 get_ee_pose函数，返回end effector pose，返回四个元组：3d位置，四元数，旋转矩阵，欧拉角。后面三个都可以表示end effector
+          的朝向
+   3.1.12 compute_ik函数，根据给定的pos和ori，计算逆运动学解
+ 3.2 single_arm_pybullet.py 定义了单臂类相关方法
+   3.2.1 go_home函数，字面意义
+   3.2.2 reset函数，重新导入urdf文件
+ 3.3 dual_arm_pybullet.py
+     self.arms是一个dict，包含左右臂，通过名字来访问，如self.arms['left_arm']等。每个arm有独特的id，每个arm的每个joint也有id
+     双臂类定义的一些方法最终要去到单臂类中调用相关函数
+   3.3.1 self_collision，参数，当导入urdf文件时，是否允许自我碰撞
+   3.3.2 set_jpos函数，是arm类中对应函数的具体实现，设置两个机械臂的pos，或者设置某个机械臂某个具体关节的pos。
+         要考虑到是否ignore_physics，即有可能不可达；
+         考虑到仿真的模式，是step simulation，还是real time mode，暂时不知道这两种模式的区别************
+   3.3.3 set_jvel函数，跟上面类似
+   3.3.4 set_jtorq函数，同上
+   3.3.5 set_ee_pose函数，要给定操作的是哪个机械臂，左还是右，然后跳转到single arm中对应函数执行。
+   3.3.6 move_ee_xyz函数，作用上面有说，而且也是指定arm名字，根据名字在字典中跳转到single arm类中对应函数执行。
+         一点是只能在realtime simulation mode下使用，step simulation无法使用，why？*******************
+   3.3.7 enable_torque_control函数，允许pybullet中使用扭矩来控制
+   3.3.8 get_jpos函数，get_jvel函数,get_jtorq函数，作用类似，不再赘述。
+         pybullet的getJointStates函数会返回joint状态，为一个数组state，其中state[3]为torque。
+         另外，如果使用torque控制机械臂，则不能调用get_jtorq函数，因为没有意义
+   3.3.9 get_ee_pose函数，上面有说其作用，不过一点是必须给出arm，即指定是左臂还是右臂
+   3.3.10 get_ee_vel函数，Return the end effector's velocity，必须指定是左臂还是右臂
+   3.3.11 compute_ik函数，必须指定左臂还是右臂，然后就会到single arm类中调用相关函数
+   3.3.12 _check_arm函数，参数为joint name，返回其所属的arm name
+   3.3.13 reset_joint_state函数，字面意义，最好最开始，仿真还没有运行的时候执行，因为强制重置
+   3.3.14 _is_in_torque_mode，判断是否处于torque控制模式
+   3.3.15 _init_consts函数，字面意义，在类初始化的时候调用，包括arm/joint name，home position，dof，max torque，r_ee_link_jnt
+          r_ee_link_jnt指的是右臂end effector所在的joint name。
+   3.3.16 go_home函数，调用set jpos函数，忽略物理限制，使机械臂回到初始设定
+ 3.4 yumi_pybullet.py，继承dual_arm_pybullet
+   3.4.1 init函数，设置self.right/left_arm = SingleArmPybullet类，调用reset函数
+   3.4.2 reset函数，调用dual arm类中的setup_single_arms函数，主要是将init中两个单臂类加入到self.arms字典中。
+         load机械臂urdf文件，若使用end effector的话，激活end effector
+
+4. src/airobot/ee_tool/yumi_parallel_jaw_pybullet.py
+   yumi使用的gripper相关方法。
+   setJointMotorControlArray和setJointMotorControl2两个api的区别是，前者同时控制多个关节，后者只控制一个
+ 4.1 open函数，字面意义，设置gripper到gripper_open_angle，前提是激活end effector
+ 4.2 set_pos函数，设置gripper开闭的角度。还是根据step或real mode来区分实现。
+ 4.3 close函数，字面意义。和open函数都是通过调用set pos函数来实现gripper的开闭
+ 4.4 get_pos，返回gripper joint position
+ 4.5 get_vel函数
+ 4.6 disable_gripper_self_collision
+ 4.7 _set_rest_joints，给定一个pos，将gripper所有的关节都设置到这个值。如果给定pos为None，则获取gripper第一个关节的pos，然后
+     将其余关节pos都按第一个关节来设置
+
+5. src/sensor/camera/
+ 5.1 rgbdcam.py
+   init包括image height/width，相机内外参数矩阵，depth min/max，depth_scale: ratio of the depth image value
+            to true depth value.
+  5.1.1 get_cam_int，返回相机内参矩阵
+  5.1.2 get_cam_ext 返回相机外参矩阵
+  5.1.3 get_pix_3dpt，计算rgb图像中像素对应的3d位置，当然要给出这些像素的深度信息。3d位置可以是相机坐标系，如果参数in_world为true，
+        则返回在世界坐标系中的3d位置
+  5.1.4 get_pcd函数，根据深度图，转换得到相机坐标系或世界坐标系下的点云数据 *********
+ 5.2 RGBDCameraPybullet
+  5.2.1 setup_camera函数，参数包括focus pt，给出一个点，相机注视这个点；dist，相机到该注视点的距离，然后给出三个欧拉角参数，以及
+        最后宽高。
+        设置相机位置和角度时从的是pybullet自带的computeViewMatrixFromYawPitchRoll函数，还有其他形式，
+        详细参照  https://blog.csdn.net/zxxxiazai/article/details/101073854
+  5.2.2 get_images函数，返回rgb、depth、mask(optional)
+6. utils
+ 6.1 arm util
+  6.1.1 reach_ee_goal函数，参数包括pos和ori，检查 effector是否到达给定位置
+  6.1.2 wait_to_reach_ee_goal函数，阻塞代码执行直至end effector到达目标pose
+  6.1.3 reach_jnt_goal函数，检查joint是否到达给定位置，joint pos
+  6.1.4 wait_to_reach_jnt_goal，跟上面同理，阻塞代码直至到达目标
+
+7. urdf
+   原项目得yumi.urdf是带有一个桌子底座的，但是我们用的是不带的，因此在yumi_grippers.urdf中，将桌子底座注释掉，需要时取消注释即可，
+   桌子底座相关部分在urdf文件最下方。
+      新添了franka机器人，一个疑问是为什么本项目里没有这个机器人的urdf及相关link的3d文件，结果是：franka panda是一回事，全称是
+   franka panda emika，这个机器人pybullet本身就带有，因此本项目不用额外保存相关文件，直接pybullet就可以导入
+
+具体使用：
+   1. 创建不同类型机器人，在airobot/cfgs/文件夹内，xxxx_cfg.py文件，使用ar.Robot('xxx')创建机器人，会到前面说的文件夹内
+      找对应的xxx_cfg.py文件来创建。因此一共有: 'franka' 'yumi_gripper' 'yumi_palms' 'yumi' 'ur5e' 'ur5e_2f140' 'ur5e_stick'
+      三种机器人加上不同的gripper共七种，我们实验室目前的机器人对应的是 'yumi_gripper'
+         robot = ar.Robot('yumi_grippers')   首先创建Robot类，之后所有的方法都从这里访问
+      因为加了桌子得缘故，在yumi_arm.py中将机械臂初始位置z设为0.57
+   2. robot.arm  指向YumiPybullet类，在Robot类中，会根据参数创建arm类，当前状况下，arm指向YumiPybullet类，通过robot.arm访问
+      robot.arm包含 left/right_arm，SingleArmPybullet类，robot.arm.right_arm...可以访问单臂类一系列方法
+      但是 robot.arm.arms 是一个字典，字典里的两个元素又分别是左右臂两个实例，因此访问单臂一系列方法有两种方式：
+       robot.arm.right_arm or robot.arm.arms['right'] 两者等效
+   3. 对于singleArm，若包含end effector，则通过 robot.arm.right_arm.eetool 来访问YumiParallelJawPybullet类
+       如，打开右臂gripper： robot.arm.right_arm.eetool.open()
+   4. 对于直接给定pos和ori使机械臂到达给定pose的，有两种方式，
+        一是 robot.arm.set_ee_pose(pos=[x, x,x ], ori=[0, 0, 0], arm='right')，必须指明左还是右
+        或者，直接到singleArm去调用，即 robot.arm.right_arm.set_ee_pose(pos, ori)
+         完全等效，因为最终都是到单臂类中去调用相关方法
+      同样，获取end effector位置朝向参数，get_ee_pose()函数也是这两种方法，不再赘述
+   5. 调用相机模块，通过 robot.cam.get_images() 调用，设置参数get_rgb get_depth get_seg分别得到三种观测数据,返回值有三个，
+      按顺序分别是rgb， depth， seg，若相关参数为false，则相关返回值为None。
+    5.1 get_images() 之前必须要先调用 setup_camera(focus_p, camera_pos, height, width) 函数设置相机，
+         包括设置相机位置，注视点，以及up camera参数。通过调用pybullet的computeViewMatrix函数来实现，第一个参数是相机pos，
+         第二个参数是focus point，第三个是up camera，目前实验来看，up camera设置为[-1, 0, 0]，至于注视点和相机位置自行设定即可。
+           因为机械臂抬高了，所以相机位置在z轴加一个offset。
+      5.1.1 从正面视角看相关参数，front view： focus_pt=[0, 0, 0.25], camera_pos=[1.4, 0, 0.3]
+      5.1.2 俯视，bird view： focus_pt=[0, 0, 0]， camera_pos=[0, 0, 1.2]
+      5.1.3 agent view： focus_pt=[0, 0, 0]， camera_pos=[0.65, 0, 0.6]
+   6. domain randomization，随机改变物体、桌子和机械臂表面纹理颜色等，详情参照scripts/ur5e/sim/texture_randomization.py
+      具体和pb_utils.py的TextureModder类相关，可以对rgb、texture、noise、gradient等进行随机改变。对texture改变需要提前给定
+       纹理图像，可自行下载，存放在一个文件夹中，目前是scripts/ur5e/sim/textures.
+   7. 同为scripts/ur5e/sim/，文件夹下，还提供了gym形式的环境，即step，reset等，没有提供reward计算，以及此时模式为stepSimulation，
+      不是real mode了，然后控制方式没有直接调用set ee pose，而是自己计算IK，再执行，具体再细看。
+   8. 还是这个文件夹，还提供了保存深度图的文件，还有可视化点云数据的文件，camera模块提供了由深度图转点云数据的函数，这里进行可视化
+  9，当设置机械臂的ori为欧拉角[0, 0, 0]时，机械臂夹持器竖直向上，两个手指构成的平面为x-z平面
