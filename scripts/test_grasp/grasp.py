@@ -135,7 +135,7 @@ def control_robot(pose, robot_category='yumi_r', control_mode='direct', move_up=
 
 def auto_control(args, obj_id=None):
     """
-    Automatically read grasp pose from grasp pose txt file, this function only for grasp single object,
+    Automatically read grasp pose from grasp pose file, this function only for grasp single object,
     and object type, position, orientation must be the same with data_x/info.txt
        Besides, set the position that input into control_robot() as the center point of contact point uniformly¡£
     Args:
@@ -147,7 +147,7 @@ def auto_control(args, obj_id=None):
         poses, scores = load_pose_GPNet(os.path.join(args.data_path, args.pose_file))
     elif args.method == '6dof-graspnet':
         poses, scores = load_pose_6dofgraspnet(os.path.join(args.data_path, args.pose_file))
-        offset_along_ori = 0.10527  # 6dof-graspnet, pos is bottom point
+        offset_along_ori = 0.10527  # 6dof-graspnet, pos is bottom point, change to center of contact points
         for center, _, vec in poses:
             center += pos_offset_along_ori(vec, offset_along_ori)
     else:
@@ -163,18 +163,7 @@ def auto_control(args, obj_id=None):
 
 
 if __name__ == '__main__':
-    """
-    1. run get_data.py, then you can get data_x directory, which contains all the relevant data: camera info,
-       depth image, rgb image, point cloud, etc
-    2. run a grasping method, such as the GPNet | 6dof-graspnet, use the given depth image depth.jpg or point cloud 
-       file pc.npy to generate grasping pose and store it in data_x folder, such as grasp_pose_0.txt
-    3. run grasp.py, you need to set the robot, load the object(****be consistent with get_data.py****), set grasp pose 
-       txt path, set the camera(if you want to save image in GUI), then choose the control mode. if you want to control 
-       manually, call manual_control function, input the pose by your hand, or call the auto_control function, which
-       will automatically read the pose in grasp_pose_x.txt and auto control the robot
-    4. visualize_grasp.py, visualization method, draw grasp pose in point cloud scene
-    """
-    # when set orientation is euler angle [0, 0, 0], the gripper is vertical upward, the gripper plane is z-x plane
+    # when set orientation is euler angle [0, 0, 0], the gripper is vertical upward, the gripper plane is x-z plane
     args = make_parser().parse_args()
     if args.robot_arm == 'ur5e':
         robot_type = 'ur5e_2f140'
