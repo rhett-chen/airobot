@@ -22,11 +22,11 @@ def make_parser():
     parser.add_argument('--pc_gripper_version', choices={'panda', 'customized'}, default='customized',
                         help='gripper point cloud version in visualize_grasp.py file: panda | customized')
 
-    parser.add_argument('--data_path', type=str, default='data_0', help='dir path that stores all relevant data')
-    parser.add_argument('--pose_file', type=str, default='grasp_pose_1.txt',
+    parser.add_argument('--data_path', type=str, default='data_3', help='dir path that stores all relevant data')
+    parser.add_argument('--pose_file', type=str, default='grasp_pose_6dof1024whole.npy',
                         help='file in data_path dir that stores the grasp pose, .txt or .npy')
 
-    parser.add_argument('--robot_arm', choices={'yumi_r', 'yumi_l', 'ur5e', 'franka'}, default='yumi_r',
+    parser.add_argument('--robot_arm', choices={'yumi_r', 'yumi_l', 'ur5e', 'franka'}, default='ur5e',
                         help='yumi has two arm, ur5e has one arm, this argument is used to specify which arm to '
                              'grasp: yumi_r | yumi_l | ur5e | franka')
     parser.add_argument('--control_mode', choices={"linear", "direct"}, default='linear',
@@ -34,6 +34,6 @@ def make_parser():
                              "set gripper to target orientation first, then move the gripper across the line from "
                              "current position to target position ans keep the orientation unchanged")
 
-    parser.add_argument('--method', choices={"6dof-graspnet", "GPNet"}, default='GPNet',
+    parser.add_argument('--method', choices={"6dof-graspnet", "GPNet"}, default='6dof-graspnet',
                         help='grasp methods have been implemented: GPNet | 6dof-graspnet')
     return parser

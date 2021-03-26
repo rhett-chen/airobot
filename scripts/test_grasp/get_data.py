@@ -29,7 +29,15 @@ def main():
     """
     # load robot and object, set camera parameter
     args = make_parser().parse_args()
-    robot_type = 'yumi_gripper' if args.robot_arm[0] == 'y' else 'ur5e_2f140'
+    if args.robot_arm == 'ur5e':
+        robot_type = 'ur5e_2f140'
+    elif args.robot_arm == 'franka':
+        robot_type = 'franka'
+    else:
+        if args.robot_arm.split('_')[0] == 'yumi':
+            robot_type = 'yumi_grippers'
+        else:
+            raise NotImplementedError("robot_arm can only be one of ['yumi_r', 'yumi_l', 'ur5e', 'franka']")
     robot = ar.Robot(robot_type)
     robot.arm.go_home()
     robot.pb_client.load_urdf('plane.urdf')
