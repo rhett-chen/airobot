@@ -27,7 +27,7 @@ class RGBDCameraPybullet(RGBDCamera):
         self.depth_max = self.cfgs.CAM.SIM.ZFAR
 
     # def setup_camera(self, focus_pt=None, dist=2, yaw=0, pitch=0, roll=0, height=None, width=None):
-    def setup_camera(self, focus_pt=None, camera_pos=None, height=None, width=None, cam_int_mat=None,
+    def setup_camera(self, focus_pt=None, camera_pos=None, height=None, width=None,
                      dist=None, yaw=None, pitch=None, roll=None):
         """
         Setup the camera view matrix and projection matrix. Must be called
@@ -79,6 +79,7 @@ class RGBDCameraPybullet(RGBDCamera):
                         [0, 0, 0, 1]])
         view_matrix_T = self.view_matrix.T
         self.cam_ext_mat = np.dot(np.linalg.inv(view_matrix_T), rot)
+        # self.cam_ext_mat = view_matrix_T
 
         vfov = np.deg2rad(fov)
         tan_half_vfov = np.tan(vfov / 2.0)
@@ -91,7 +92,7 @@ class RGBDCameraPybullet(RGBDCamera):
                                      [0, 0, 1]])
         self._init_pers_mat()
 
-    def get_images(self, get_rgb=True, get_depth=True, get_seg=False, **kwargs):
+    def get_images(self, get_rgb=True, get_depth=True, get_seg=True, **kwargs):
         """
         Return rgb, depth, and segmentation images.
 
@@ -157,4 +158,3 @@ class RGBDCameraPybullet(RGBDCamera):
             seg = np.reshape(images[4], [self.img_height, self.img_width])
 
         return rgb, depth, seg
-

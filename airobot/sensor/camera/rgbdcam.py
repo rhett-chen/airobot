@@ -263,4 +263,5 @@ class RGBDCamera(Camera):
         else:
             pc_in_cam = np.concatenate((point_cloud, np.ones((point_cloud.shape[0], 1))), axis=1)
             pc_in_world = np.dot(self.cam_ext_mat, pc_in_cam.T)
+            # pc_in_world = np.dot(np.linalg.inv(self.cam_ext_mat), pc_in_cam.T)
             return pc_in_world[:3, :].T

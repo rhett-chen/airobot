@@ -59,3 +59,50 @@ import cv2
 # print(depth.shape)
 # cv2.imshow('v', image)
 # cv2.waitKey(0)
+# rot = np.array([[1, 0, 0],
+#                 [0, -1, 0],
+#                 [0, 0, -1]])
+# print(co.rot2euler(rot))
+
+# a = np.load('data_4/pc.npy')
+# b = np.load('data_13/pc.npy')
+# print(a == b)
+# print(a.shape, b.shape)
+# print(a.reshape((160, 160, 3))[0, 0, :], b.reshape((160, 160, 3))[159, 159, :])
+
+# em = np.array([[0., -1., 0., 0.],
+#                [0.72819996, 0., 0.685364, -0.239],
+#                [-0.6853, -0., 0.72819, -0.049],
+#                [0., 0., 0., 1.]])
+# print(np.linalg.inv(em))
+# [[ 0.          0.72822796 -0.68539972  0.1404619 ]
+#  [-1.         -0.         -0.         -0.        ]
+#  [ 0.          0.68533572  0.72823792  0.1994789 ]
+#  [ 0.          0.          0.          1.        ]]
+# a = np.load('data_4/depth.npy')
+# b = np.load('data_5/depth.npy')
+# print(a.reshape((160, 160))[60:65, 100])
+# print(b.reshape((160, 160))[60:65, 100])
+# a = np.load('data_4/pc.npy')
+# b = np.load('data_5/pc.npy')
+# print(a.reshape((160, 160, 3))[60:65, 100, :])
+# print(b.reshape((160, 160, 3))[60:65, 100, :])
+
+# seg = np.load('data_3/seg.npy')
+# print(seg.shape)
+# for i in range(180):
+#     for j in range(180):
+#         if seg[i][j] != 0:
+#             print(seg[i][j], i, j)
+
+a = np.load('data_5/pc.npy')
+b = []
+for co in a:
+    if co[2] < 0.0145:
+        pass
+    else:
+        b.append(co)
+b = np.array(b)
+print(b.shape)
+print(b[100], b[200])
+np.save('data_5/object_manual_seg_pc.npy', b)

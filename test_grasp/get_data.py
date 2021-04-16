@@ -7,7 +7,7 @@ import os
 import time
 import pybullet as p
 import numpy as np
-from util import load_single_object
+from util import load_single_object, load_multi_object
 from options import make_parser
 
 
@@ -43,13 +43,16 @@ def main():
     robot.pb_client.load_urdf('plane.urdf')
     if args.robot_z_offset > 0:
         robot.pb_client.load_urdf('table/table.urdf', base_pos=[0.1, 0, 0], scaling=0.9)
-    load_single_object(robot, args)
+    if args.multi_obj:
+        load_multi_object(robot, args)
+    else:
+        load_single_object(robot, args)
     time.sleep(1.3)
+
     args.cam_focus_pt[2] += args.robot_z_offset
     args.cam_pos[2] += args.robot_z_offset
     robot.cam.setup_camera(focus_pt=args.cam_focus_pt, camera_pos=args.cam_pos,
                            height=args.cam_height, width=args.cam_width)
-
     # in current dir: test_grasp, we will save the whole info(depth, point cloud, info.npy, info.txt) to a
     # separate folder, named data_x, x is the number of folders in the current dir
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -85,8 +88,8 @@ def main():
         ci.write(str(robot.cam.cam_ext_mat))
         ci.flush()
 
-    # save rgb. depth, point cloud
-    img, depth, _ = robot.cam.get_images(get_rgb=True, get_depth=True, get_seg=True)
+    # save rgb. depth, segmentation, point cloud
+    img, depth, seg = robot.cam.get_images(get_rgb=True, get_depth=True, get_seg=True)
     print('image shape: {}, depth shape: {}'.format(img.shape, depth.shape))
     cv2.imwrite(os.path.join(save_path, 'depth.jpg'),
                 encode_depth_to_image(depth))
@@ -95,20 +98,14 @@ def main():
     cv2.imwrite(os.path.join(save_path, 'rgb.jpg'), img)
     ar.log_info(f'Depth image min:{depth.min()} m, max: {depth.max()} m.')
     np.save(os.path.join(save_path, 'depth.npy'), depth)
-
+    np.save(os.path.join(save_path, 'seg.npy'), seg)
     # get point cloud data in the world frame
     pts = robot.cam.depth_to_point_cloud(depth, in_world=True)
     ar.log_info('point cloud shape: {}'.format(pts.shape))
-    print('\npoint clouds: \n')
-    print(pts.reshape([args.cam_height, args.cam_width, 3])[100, 100])
     np.save(os.path.join(save_path, 'pc.npy'), pts)
     print('saved %s successfully' % os.path.join(save_path, 'pc.npy'))
-    pco = pts.reshape([args.cam_height, args.cam_width, 3])[50:130, 60:120, :]
-    np.save(os.path.join(save_path, 'pco.npy'), pco.reshape((-1, 3)))  # part of point cloud
-    print('saved %s successfully' % os.path.join(save_path, 'pco.npy'))
 
-    while 1:  # close the window to end the program
-        pass
+    input()
 
 
 if __name__ == '__main__':

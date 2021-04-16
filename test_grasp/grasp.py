@@ -4,7 +4,6 @@ import airobot as ar
 import numpy as np
 import os
 import time
-from get_data import load_single_object
 import airobot.utils.common as ut
 from util import *
 from options import make_parser
@@ -147,9 +146,6 @@ def auto_control(args, obj_id=None):
         poses, scores = load_pose_GPNet(os.path.join(args.data_path, args.pose_file))
     elif args.method == '6dof-graspnet':
         poses, scores = load_pose_6dofgraspnet(os.path.join(args.data_path, args.pose_file))
-        offset_along_ori = 0.10527  # 6dof-graspnet, pos is bottom point, change to center of contact points
-        for center, _, vec in poses:
-            center += pos_offset_along_ori(vec, offset_along_ori)
     else:
         raise NotImplementedError
 
@@ -179,12 +175,16 @@ if __name__ == '__main__':
     robot.pb_client.load_urdf('plane.urdf')
     if args.robot_z_offset > 0:
         robot.pb_client.load_urdf('table/table.urdf', base_pos=[0.1, 0, 0], scaling=0.9)
-    box_id = load_single_object(robot, args)
-    time.sleep(0.8)
+    if args.multi_obj:
+        objects_ids = load_multi_object(robot, args)
+    else:
+        object_ids = load_single_object(robot, args)
+    time.sleep(1.0)
+
     args.cam_focus_pt[2] += args.robot_z_offset
     args.cam_pos[2] += args.robot_z_offset
     robot.cam.setup_camera(focus_pt=args.cam_focus_pt, camera_pos=args.cam_pos,
                            height=args.cam_height, width=args.cam_width)
 
     # manual_control(args)  # Not recommend
-    auto_control(args, obj_id=box_id)
+    auto_control(args, obj_id=object_ids)  # only for single object currently
