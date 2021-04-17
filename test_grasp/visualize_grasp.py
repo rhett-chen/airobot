@@ -26,13 +26,13 @@ def main():
         raise NotImplementedError
     print('load %s successfully' % os.path.join(args.data_path, args.pose_file))
 
+    # if grasp_poses is None, it means you will visualize the point cloud data
     mlab.figure(bgcolor=(1, 1, 1))
     draw_scene_mayavi(
-        args,
-        pc,
+        pc=pc,
         pc_color=pc_colors,
-        grasps=grasp_poses[:80],
-        grasp_scores=grasp_scores[:80],
+        grasps=grasp_poses,
+        grasp_scores=grasp_scores,
     )
     mlab.show()
 

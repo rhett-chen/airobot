@@ -1,13 +1,13 @@
-import sys
-sys.path.append('../airobot/')
-import airobot as ar
-import numpy as np
-import cv2
 import os
+import sys
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(ROOT_DIR)
+from util import load_multi_object, load_single_object, parse_robot_type
+import airobot as ar
+import cv2
 import time
 import pybullet as p
 import numpy as np
-from util import load_single_object, load_multi_object
 from options import make_parser
 
 
@@ -29,28 +29,17 @@ def main():
     """
     # load robot and object, set camera parameter
     args = make_parser().parse_args()
-    if args.robot_arm == 'ur5e':
-        robot_type = 'ur5e_2f140'
-    elif args.robot_arm == 'franka':
-        robot_type = 'franka'
-    else:
-        if args.robot_arm.split('_')[0] == 'yumi':
-            robot_type = 'yumi_grippers'
-        else:
-            raise NotImplementedError("robot_arm can only be one of ['yumi_r', 'yumi_l', 'ur5e', 'franka']")
+    robot_type = parse_robot_type(args.robot_arm)
     robot = ar.Robot(robot_type)
     robot.arm.go_home()
     robot.pb_client.load_urdf('plane.urdf')
-    if args.robot_z_offset > 0:
-        robot.pb_client.load_urdf('table/table.urdf', base_pos=[0.1, 0, 0], scaling=0.9)
+
     if args.multi_obj:
-        load_multi_object(robot, args)
+        _, poses = load_multi_object(robot)
     else:
         load_single_object(robot, args)
     time.sleep(1.3)
 
-    args.cam_focus_pt[2] += args.robot_z_offset
-    args.cam_pos[2] += args.robot_z_offset
     robot.cam.setup_camera(focus_pt=args.cam_focus_pt, camera_pos=args.cam_pos,
                            height=args.cam_height, width=args.cam_width)
     # in current dir: test_grasp, we will save the whole info(depth, point cloud, info.npy, info.txt) to a
@@ -63,23 +52,32 @@ def main():
     # save camera info to camera_info.npy, in addition, save object and camera info to info.txt
     info = {'cam_intrinsic': robot.cam.cam_int_mat, 'cam_view': robot.cam.view_matrix, 'cam_external':
             robot.cam.cam_int_mat, 'cam_pos': args.cam_pos, 'cam_focus_pt': args.cam_focus_pt,
-            'cam_height': args.cam_height, 'cam_width': args.cam_width, 'object_pos': args.object_pos,
-            'obj_ori': args.object_ori}
+            'cam_height': args.cam_height, 'cam_width': args.cam_width}
+    if args.multi_obj:
+        info['object'] = poses
+    else:
+        info['object'] = [args.object_pos, args.object_ori]
+
     np.save(os.path.join(save_path, 'info.npy'), info)
 
     with open(os.path.join(save_path, 'info.txt'), 'w') as ci:
-        ci.write('object position: \n')
-        ci.write(str(args.object_pos) + '\n')
-        ci.write('object rotation: \n')
-        ci.write(str(args.object_ori) + '\n')
-        ci.write('camera position: \n')
+        if args.multi_obj:
+            for i, pose in enumerate(poses):
+                ci.write('object_{} position:\n'.format(i))
+                ci.write(str(pose[0]))
+                ci.write('\nobject_{} rotation:\n'.format(i))
+                ci.write(str(pose[1]))
+        else:
+            ci.write('object position: \n')
+            ci.write(str(args.object_pos) + '\n')
+            ci.write('object rotation: \n')
+            ci.write(str(args.object_ori) + '\n')
+        ci.write('\ncamera position: \n')
         ci.write(str(args.cam_pos) + '\n')
         ci.write('camera focus point: \n')
         ci.write(str(args.cam_focus_pt) + '\n')
         ci.write('camera resolution: \n')
         ci.write(str(args.cam_height) + ' * ' + str(args.cam_width) + '\n')
-        ci.write('camera z offset: \n')
-        ci.write(str(args.robot_z_offset) + '\n')
         ci.write('camera view matrix: \n')
         ci.write(str(robot.cam.view_matrix) + '\n')
         ci.write('camera intrinsic matrix: ' + '\n')
@@ -98,7 +96,7 @@ def main():
     cv2.imwrite(os.path.join(save_path, 'rgb.jpg'), img)
     ar.log_info(f'Depth image min:{depth.min()} m, max: {depth.max()} m.')
     np.save(os.path.join(save_path, 'depth.npy'), depth)
-    np.save(os.path.join(save_path, 'seg.npy'), seg)
+    np.save(os.path.join(save_path, 'seg.npy'), seg)  # segmentation
     # get point cloud data in the world frame
     pts = robot.cam.depth_to_point_cloud(depth, in_world=True)
     ar.log_info('point cloud shape: {}'.format(pts.shape))

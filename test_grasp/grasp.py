@@ -1,21 +1,25 @@
-import sys
-sys.path.append('airobot/')
+import os
+from util import *
 import airobot as ar
 import numpy as np
-import os
 import time
 import airobot.utils.common as ut
-from util import *
 from options import make_parser
 
 
 def manual_control(args):
+    '''
+      You can input control orders on command line to control the robot arm, including pose, delta pos, delta ori,
+    home, etc. you can also try yumi/sim/IKC.py.
+    Args:
+        args:
+    '''
     open_flag = False
     robot_control_type = 'ur5e' if args.robot_arm == 'franka' else args.robot_arm
     pos, quat, rot, euler = dispatch_control_order(robot_control_type + ':get_pose')
     ar.log_info('Right arm end effector position: ' + str(pos) + ' ' + str(euler))
     while 1:
-        mov = input()
+        mov = input()  # input control order
         if mov == ' ':
             # open or close the gripper
             open_flag = not open_flag
@@ -86,7 +90,7 @@ def control_robot(pose, robot_category='yumi_r', control_mode='direct', move_up=
     Given the position and quaternion of target pose, choose the robot arm and control mode, then control the robot
     gripper to target pose
     Args:
-        linear_offset: linear offset between gripper position and grasp position center
+        linear_offset: linear offset between gripper position and grasp position center(of two contact points)
         pose: pose[0] position, list of size 3
               pose[1]: often be quaternion, list of size 4; also can be rotation matrix or euler angels
               pose[2[: approaching vector, list of size 3
@@ -146,6 +150,8 @@ def auto_control(args, obj_id=None):
         poses, scores = load_pose_GPNet(os.path.join(args.data_path, args.pose_file))
     elif args.method == '6dof-graspnet':
         poses, scores = load_pose_6dofgraspnet(os.path.join(args.data_path, args.pose_file))
+    elif args.method == 'grapsnet_baseline':
+        poses, scores = load_pose_graspnet_baseline(os.path.join(args.data_path, args.pose_file))
     else:
         raise NotImplementedError
 
@@ -159,32 +165,22 @@ def auto_control(args, obj_id=None):
 
 
 if __name__ == '__main__':
-    # when set orientation is euler angle [0, 0, 0], the gripper is vertical upward, the gripper plane is x-z plane
+    # when set orientation is euler angle [0, 0, 0], robot's gripper is vertical upward, the gripper plane is x-z plane
+    # multi object grasping is complex, including path planning etc, you can try manual_control()
     args = make_parser().parse_args()
-    if args.robot_arm == 'ur5e':
-        robot_type = 'ur5e_2f140'
-    elif args.robot_arm == 'franka':
-        robot_type = 'franka'
-    else:
-        if args.robot_arm.split('_')[0] == 'yumi':
-            robot_type = 'yumi_grippers'
-        else:
-            raise NotImplementedError("robot_arm can only be one of ['yumi_r', 'yumi_l', 'ur5e', 'franka']")
+    robot_type = parse_robot_type(args.robot_arm)
+
     robot = ar.Robot(robot_type)
     robot.arm.go_home()
     robot.pb_client.load_urdf('plane.urdf')
-    if args.robot_z_offset > 0:
-        robot.pb_client.load_urdf('table/table.urdf', base_pos=[0.1, 0, 0], scaling=0.9)
     if args.multi_obj:
-        objects_ids = load_multi_object(robot, args)
+        objects_id = load_multi_object(robot, args)
     else:
-        object_ids = load_single_object(robot, args)
+        object_id = load_single_object(robot, args)
     time.sleep(1.0)
 
-    args.cam_focus_pt[2] += args.robot_z_offset
-    args.cam_pos[2] += args.robot_z_offset
     robot.cam.setup_camera(focus_pt=args.cam_focus_pt, camera_pos=args.cam_pos,
                            height=args.cam_height, width=args.cam_width)
 
-    # manual_control(args)  # Not recommend
-    auto_control(args, obj_id=object_ids)  # only for single object currently
+    # manual_control(args)
+    auto_control(args, obj_id=object_id)  # only support single object currently

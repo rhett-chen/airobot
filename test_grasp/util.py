@@ -32,7 +32,7 @@ def load_pose_graspnet_baseline(pose_path):
          grasp pose format is recorded in https://graspnetapi.readthedocs.io/en/latest/grasp_format.html
         Args:
             pose_path: str, grasp pose and score, .npy file
-        Returns: poses(quaternion(for x-z plane), center(center of two contact points), approaching vec), scores
+        Returns: poses(rotation matrix, center, approaching vec)(format is customized in get_grasp_points()), score
         """
     data = np.load(pose_path)
     sorted(data, key=lambda x: x[0], reverse=True)
@@ -51,7 +51,7 @@ def load_pose_graspnet_baseline(pose_path):
         te_1 = ut.euler2rot(np.array([0, np.pi / 2, 0]))
         te_2 = ut.euler2rot(np.array([np.pi / 2, 0, 0]))
         final_rot = np.dot(np.dot(rot, te_2), te_1)
-        pose[1] = ut.rot2quat(final_rot)
+        pose[1] = final_rot
 
     offset_along_ori = 0.02
     for center, _, vec in poses:
@@ -66,7 +66,7 @@ def load_pose_6dofgraspnet(pose_path):
      pos is bottom point, ori is rotation matrix
     Args:
         pose_path: str, grasp pose and score, .npy file
-    Returns: poses(quaternion(for x-z plane), center(center of two contact points), approaching vec), scores
+    Returns: poses(rotation matrix, center, approaching vec)(format is customized in get_grasp_points()), score
     """
 
     data = np.load(pose_path).item()
@@ -75,9 +75,9 @@ def load_pose_6dofgraspnet(pose_path):
     poses = []
     for pose in grasps:
         center = np.array(pose[:3, 3])
-        quat = rot2quat(pose[:3, :3])
-        approching_vec = get_approaching_vec(quat)
-        poses.append([center, quat, approching_vec])
+        rot = pose[:3, :3]
+        approching_vec = get_approaching_vec(rot)
+        poses.append([center, rot, approching_vec])
 
     # center is bottom point, change it to center of two contact points, offset=0.10527 is the distance from bottom
     # point to center of two contact points, you can see comments of util.py -> get_grasp_points() for details
@@ -94,16 +94,16 @@ def load_pose_GPNet(pose_path):
     for GPNet repository, the return hasn't contain scores currently
     Args:
         pose_path: str, grasp pose txt file path or npy file path
-    Returns:  poses(quaternion, center(center of two contact points), approaching vec), scores
+    Returns:  poses(rotation matrix, center, approaching vec)(format is customized in get_grasp_points()), score
     """
 
     poses = []
     scores = None
     data = np.load(pose_path)
     for center, quat in data:
-        # center = center + obj_pos
         approching_vec = get_approaching_vec(quat)
-        poses.append([center, quat, approching_vec])
+        rot = ut.to_rot_mat(quat)
+        poses.append([center, rot, approching_vec])
     return poses, None
 
 
@@ -137,11 +137,10 @@ def load_single_object(robot, args):
         args: args.object_pos, args.object_ori
 
     """
-    args.object_pos[2] += args.robot_z_offset
     obj_id = robot.pb_client.load_geom(
-        'box',
+        shape_type='box',
         size=0.025,
-        # 'cylinder',   # object type
+        # shape_type='cylinder',   # object type
         # size=[0.022, 0.1],  # object size
         mass=0.3,
         base_pos=args.object_pos,
@@ -150,48 +149,38 @@ def load_single_object(robot, args):
     return obj_id
 
 
-def load_multi_object(robot, args):
+def load_multi_object(robot):
     """
-    Warnings: you need to set object type and size
+    Warnings: you need to set object parameters.
+    if you want to load object whose shape is not in {'sphere', 'box', 'capsule', 'cylinder', 'mesh'}, you need
+       object's .urdf file, and use robot.pb_client.loadURDF()
     Args:
         robot:
-        args: robot_z_offset
     """
-    z_offset = args.robot_z_offset
-    obj_1_id = robot.pb_client.load_geom(
-        'box',
-        size=0.025,
-        # 'cylinder',   # object type
-        # size=[0.022, 0.1],  # object size
-        mass=0.3,
-        base_pos=[0.3, 0, 0.1 + z_offset],
-        base_ori=euler2quat([0, 0, 0.3]),
-        rgba=[1, 0, 0, 1])
+    meta = [{'shape': 'box', 'pos': [0.3, 0, 0.1], 'ori': [0, 0, 0.3], 'size': 0.025,
+             'mass': 0.3, 'rgba': [1, 0, 0, 1]},
+            {'shape': 'cylinder', 'pos': [0.25, 0.045, 0.1], 'ori': [0, 0, 0.13], 'size': [0.023, 0.05],
+             'mass': 0.3, 'rgba': [1, 0, 0, 1]},
+            {'shape': 'capsule', 'pos': [0.35, -0.07, 0.05], 'ori': [0, 0, 0.63], 'size': [0.02, 0.037],
+             'mass': 0.3, 'rgba': [1, 0, 0, 1]},
+            {'shape': 'box', 'pos': [0.36, 0, 0.1], 'ori': [0, 0, 1.33], 'size': [0.025, 0.05, 0.02],
+             'mass': 0.3, 'rgba': [1, 0, 0, 1]}]
 
-    obj_2_id = robot.pb_client.load_geom(
-        'cylinder',   # object type
-        size=[0.023, 0.05],  # object size
-        mass=0.3,
-        base_pos=[0.25, 0.045, 0.1 + z_offset],
-        base_ori=euler2quat([0, 0, 0.13]),
-        rgba=[1, 0, 0, 1])
+    ids = []
+    poses = []
+    for obj_data in meta:
+        obj_id = robot.pb_client.load_geom(
+            shape_type=obj_data['shape'],
+            size=obj_data['size'],
+            mass=obj_data['mass'],
+            base_pos=obj_data['pos'],
+            base_ori=obj_data['ori'],
+            rgba=obj_data['rgba']
+        )
+        ids.append(obj_id)
+        poses.append([obj_data['pos'], obj_data['ori']])
 
-    obj_3_id = robot.pb_client.load_geom(
-        'capsule',
-        size=[0.02, 0.037],
-        mass=0.3,
-        base_pos=[0.35, -0.07, 0.05 + z_offset],
-        base_ori=euler2quat([0, 0, 0.63]),
-        rgba=[1, 0, 0, 1])
-
-    obj_4_id = robot.pb_client.load_geom(
-        'box',
-        size=[0.025, 0.05, 0.02],
-        mass=0.3,
-        base_pos=[0.36, 0, 0.1 + z_offset],
-        base_ori=euler2quat([0, 0, 1.33]),
-        rgba=[1, 0, 0, 1])
-    return obj_1_id, obj_2_id, obj_3_id, obj_4_id
+    return ids, poses
 
 
 def get_grasp_points():
@@ -200,7 +189,7 @@ def get_grasp_points():
     shape of gripper. Originally, there are two gripper versions: panda and customized, difference between them is shown
     in the following comments. Now delete panda version, only use customized version.
 
-        pc_gripper_version: customized | panda
+        pc_gripper_version: customized | panda(for 6dof-graspnet)
                                  |  ^  |   <- top is two contact points, ^ is center of two contact points
             gripper figure:      |_____|   <- line
                                     |
@@ -223,7 +212,7 @@ def get_grasp_points():
          so in load_pose_6dofgraspnet(), we add offset to the original poses.
             3. grasp poses generated by graspnet-baseline: pos is 0.02 away from center of two contact points in the
          opposite direction of the approaching vector. rotation is for gripper in x-y plane, towards x-axis, so in
-         load_pose_graspnet_baseline(), we add rotation and offset to the original poses.
+         load_pose_graspnet_baseline(), I add rotation and offset to the original poses.
     Returns: grasp points shape [7, 3]
     """
     # original panda's control_points
@@ -239,6 +228,19 @@ def get_grasp_points():
     control_points = np.array([[0., 0., -0.105], [0., 0., -0.046], [0.037, 0, -0.046], [0.037, 0, 0.],
                                [0.037, 0, -0.046], [-0.037, 0, -0.046], [-0.037, 0, 0.]])
     return control_points
+
+
+def parse_robot_type(robot_arm):
+    if robot_arm == 'ur5e':
+        robot_type = 'ur5e_2f140'
+    elif robot_arm == 'franka':
+        robot_type = 'franka'
+    else:
+        if robot_arm.split('_')[0] == 'yumi':
+            robot_type = 'yumi_grippers'
+        else:
+            raise NotImplementedError("robot_arm can only be one of ['yumi_r', 'yumi_l', 'ur5e', 'franka']")
+    return robot_type
 
 
 def get_color_plasma(x):
@@ -259,76 +261,26 @@ def get_color_for_pc(pc, K, color_image):
     return pc_colors
 
 
-class Object(object):
-    """Represents a graspable object."""
-
-    def __init__(self, filename):
-        """Constructor.
-        :param filename: Mesh to load
-        :param scale: Scaling factor
-        """
-        self.mesh = trimesh.load(filename)
-        self.scale = 1.0
-
-        # print(filename)
-        self.filename = filename
-        if isinstance(self.mesh, list):
-            # this is fixed in a newer trimesh version:
-            # https://github.com/mikedh/trimesh/issues/69
-            print("Warning: Will do a concatenation")
-            self.mesh = trimesh.util.concatenate(self.mesh)
-
-        self.collision_manager = trimesh.collision.CollisionManager()
-        self.collision_manager.add_object('object', self.mesh)
-
-    def rescale(self, scale=1.0):
-        """Set scale of object mesh.
-        :param scale
-        """
-        self.scale = scale
-        self.mesh.apply_scale(self.scale)
-
-    def resize(self, size=1.0):
-        """Set longest of all three lengths in Cartesian space.
-        :param size
-        """
-        self.scale = size / np.max(self.mesh.extents)
-        self.mesh.apply_scale(self.scale)
-
-    def in_collision_with(self, mesh, transform):
-        """Check whether the object is in collision with the provided mesh.
-        :param mesh:
-        :param transform:
-        :return: boolean value
-        """
-        return self.collision_manager.in_collision_single(mesh, transform=transform)
-
-
-def draw_scene_mayavi(args,
-               pc,
-               grasps=None,
-               grasp_scores=None,
-               grasp_color=None,
-               gripper_color=(0, 1, 0),
-               show_gripper_mesh=False,
-               grasps_selection=None,
-               visualize_diverse_grasps=False,
-               min_seperation_distance=0.03,
-               pc_color=None,
-               plasma_coloring=False,
-               target_cps=None):
+def draw_scene_mayavi(pc,
+                      grasps=None,
+                      grasp_scores=None,
+                      grasp_color=None,
+                      gripper_color=(0, 1, 0),
+                      grasps_selection=None,
+                      visualize_diverse_grasps=False,
+                      min_seperation_distance=0.03,
+                      pc_color=None,
+                      plasma_coloring=False):
     """
     changed based on https://github.com/jsll/pytorch_6dof-graspnet, you can find original version here
     Draws the 3D scene for the object and the scene.
     Args:
-      args: util.make_parser(), parameters needed for data acquisition, grasp, create robot, grasp visualization, etc
       gripper_color: gripper color in rgb
       pc: point cloud of the object
       grasps: list of numpy array indicating the transformation of the grasps: [position, rotation, approaching vector]
       grasp_scores: grasps will be colored based on the scores. If left empty, grasps are visualized in green.
       grasp_color: if it is a tuple, sets the color for all the grasps. If list
         is provided it is the list of tuple(r,g,b) for each grasp.
-      show_gripper_mesh: If True, shows the gripper mesh for each grasp.
       visualize_diverse_grasps: sorts the grasps based on score. Selects the
             top score grasp to visualize and then choose grasps that are not within
             min_seperation_distance distance of any of the previously selected
@@ -339,7 +291,7 @@ def draw_scene_mayavi(args,
     """
     if grasps is None:
         grasps = []
-    max_grasps = 45
+    max_grasps = 50
     grasps = np.array(grasps)
 
     if grasp_scores is not None:
@@ -384,13 +336,6 @@ def draw_scene_mayavi(args,
             g.glyph.glyph.scale_factor = 0.01
 
     grasp_pc = get_grasp_points()
-
-    # a = ut.euler2rot(np.array([0, np.pi / 2, 0]))
-    # grasp_pc = np.dot(a, grasp_pc.T)
-    # a = ut.euler2rot(np.array([np.pi / 2, 0, 0]))
-    # grasp_pc = np.dot(a, grasp_pc).T
-    # print(grasp_pc)
-
     if grasp_scores is None:
         indexes = range(len(grasps))
     else:
@@ -441,49 +386,12 @@ def draw_scene_mayavi(args,
             if min_score == 1.0:
                 gripper_color = (0.0, 1.0, 0.0)
 
-        if show_gripper_mesh:
-            if args.grasp_points_file[0] != 'p':
-                raise NotImplementedError
-            gripper_mesh = Object(
-                'panda_gripper.obj').mesh
-            gripper_mesh.apply_transform(g)
-            mlab.triangular_mesh(
-                gripper_mesh.vertices[:, 0],
-                gripper_mesh.vertices[:, 1],
-                gripper_mesh.vertices[:, 2],
-                gripper_mesh.faces,
-                color=gripper_color,
-                opacity=1 if visualize_diverse_grasps else 0.5)
+        pts = np.matmul(grasp_pc, ut.to_rot_mat(g[1]).T)  # rotation
+        pts += np.expand_dims(g[0], 0)  # translation
+        if isinstance(gripper_color, list):
+            mlab.plot3d(pts[:, 0], pts[:, 1], pts[:, 2], color=gripper_color[i], tube_radius=0.003, opacity=1)
         else:
-            pts = np.matmul(grasp_pc, ut.to_rot_mat(g[1]).T)  # rotation
-            pts += np.expand_dims(g[0], 0)  # translation
-            if isinstance(gripper_color, list):
-                mlab.plot3d(pts[:, 0],
-                            pts[:, 1],
-                            pts[:, 2],
-                            color=gripper_color[i],
-                            tube_radius=0.003,
-                            opacity=1)
-            else:
-                tube_radius = 0.001
-                mlab.plot3d(pts[:, 0],
-                            pts[:, 1],
-                            pts[:, 2],
-                            color=gripper_color,
-                            tube_radius=tube_radius,
-                            opacity=1)
-                if target_cps is not None:
-                    mlab.points3d(target_cps[ii, :, 0],
-                                  target_cps[ii, :, 1],
-                                  target_cps[ii, :, 2],
-                                  color=(1.0, 0.0, 0),
-                                  scale_factor=0.01)
+            tube_radius = 0.001
+            mlab.plot3d(pts[:, 0], pts[:, 1], pts[:, 2], color=gripper_color, tube_radius=tube_radius, opacity=1)
 
     print('removed {} similar grasps'.format(removed))
-
-
-if __name__ == '__main__':
-    poses = load_pose_GPNet('data_0/grasp_pose_0.txt', [0, 0, 0])
-    poses = poses[:, :2]
-    print(type(poses))
-    np.save('data_0/grasp_pose_0.npy', poses)
