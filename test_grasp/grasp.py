@@ -90,7 +90,7 @@ def control_robot(pose, robot_category='yumi_r', control_mode='direct', move_up=
     Given the position and quaternion of target pose, choose the robot arm and control mode, then control the robot
     gripper to target pose
     Args:
-        linear_offset: linear offset between gripper position and grasp position center(of two contact points)
+        linear_offset: linear offset between gripper position and grasp position (center of two contact points)
         pose: pose[0] position, list of size 3
               pose[1]: often be quaternion, list of size 4; also can be rotation matrix or euler angels
               pose[2[: approaching vector, list of size 3
@@ -109,14 +109,14 @@ def control_robot(pose, robot_category='yumi_r', control_mode='direct', move_up=
         robot_category = 'ur5e'  # The control commands of these two robots are the same in this simulation environment
 
     # there is a linear offset between gripper position and grasp position center,
-    actual_target_pos = pose[0] + pos_offset_along_ori(pose[2], linear_offset)
+    actual_target_pos = pose[0] + pos_offset_along_approach_vec(pose[2], linear_offset)
     print('target grasp pose: pos|quat|approach vector', actual_target_pos, pose[1], pose[2])
 
     dispatch_control_order(robot_category + ':open')
     if control_mode == 'direct':
         dispatch_control_order(robot_category + ':set_pose', actual_target_pos, pose[1])
     elif control_mode == 'linear':
-        temp_posi = pose[0] + pos_offset_along_ori(pose[2], -0.25)
+        temp_posi = pose[0] + pos_offset_along_approach_vec(pose[2], -0.25)
         dispatch_control_order(robot_category + ':set_pose', temp_posi, pose[1])
         cur_pos, cur_quat, _, cur_euler = dispatch_control_order(robot_category + ':get_pose')
         delta_pos = np.array(actual_target_pos) - np.array(cur_pos)
@@ -140,7 +140,7 @@ def auto_control(args, obj_id=None):
     """
     Automatically read grasp pose from grasp pose file, this function only for grasp single object,
     and object type, position, orientation must be the same with data_x/info.txt
-       Besides, set the position that input into control_robot() as the center point of contact point uniformly¡£
+       Besides, set the position that input into control_robot() as the center point of contact point uniformly
     Args:
         args: parser
         obj_id: pybullet object ID, used to reset the arena
@@ -173,10 +173,14 @@ if __name__ == '__main__':
     robot = ar.Robot(robot_type)
     robot.arm.go_home()
     robot.pb_client.load_urdf('plane.urdf')
+
+    #  ***object pose must be equal to the object pose you set when you run get_data.py***
+    #  because grasp poses are generated for the object when you run get_data.py.
+    #  if not, you need to add the relative transformation manually in auto_control() function
     if args.multi_obj:
-        objects_id = load_multi_object(robot, args)
+        objects_id = load_multi_object(robot)  # object pose in load_multi_object() function
     else:
-        object_id = load_single_object(robot, args)
+        object_id = load_single_object(robot, args)  # object pose in options.py
     time.sleep(1.0)
 
     robot.cam.setup_camera(focus_pt=args.cam_focus_pt, camera_pos=args.cam_pos,

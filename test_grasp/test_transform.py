@@ -95,7 +95,7 @@ import cv2
 #         if seg[i][j] != 0:
 #             print(seg[i][j], i, j)
 
-a = np.load('data_5/pc.npy')
+a = np.load('data_2/pc.npy')
 b = []
 for co in a:
     if co[2] < 0.0145:

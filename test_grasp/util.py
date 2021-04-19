@@ -9,30 +9,30 @@ import mayavi.mlab as mlab
 from airobot.utils.common import euler2quat, rot2quat
 
 
-def pos_offset_along_ori(orientation, offset_dis):
+def pos_offset_along_approach_vec(approach_vec, offset_dis):
     """
     Args:
-        orientation: approaching vector, 3-d list
+        approach_vec: approaching vector, 3-d list
         offset_dis: the offset distance along the approaching vector, positive means along, negative means opposite
     Returns: 3-d numpy array, the original coordinate plus this return value, you can get the translated coordinate
             along approaching vector
     """
-    denominator = np.sqrt(orientation[0] ** 2 + orientation[1] ** 2 + orientation[2] ** 2)
-    offset_z = orientation[2] / denominator * offset_dis
-    offset_y = orientation[1] / denominator * offset_dis
-    offset_x = orientation[0] / denominator * offset_dis
+    denominator = np.sqrt(approach_vec[0] ** 2 + approach_vec[1] ** 2 + approach_vec[2] ** 2)
+    offset_z = approach_vec[2] / denominator * offset_dis
+    offset_y = approach_vec[1] / denominator * offset_dis
+    offset_x = approach_vec[0] / denominator * offset_dis
     return np.array([offset_x, offset_y, offset_z])
 
 
 def load_pose_graspnet_baseline(pose_path):
     """
         warning: this function only for grasp pose predicted by
-         ***graspnet-baseline: <https://github.com/rhett-chen/graspnet-baseline> ***
+         *** graspnet-baseline: <https://github.com/rhett-chen/graspnet-baseline> ***
          pos is bottom point, ori is rotation matrix
          grasp pose format is recorded in https://graspnetapi.readthedocs.io/en/latest/grasp_format.html
         Args:
             pose_path: str, grasp pose and score, .npy file
-        Returns: poses(rotation matrix, center, approaching vec)(format is customized in get_grasp_points()), score
+        Returns: poses(quaternion, center, approaching vec)(format is customized in get_grasp_points()), score
         """
     data = np.load(pose_path)
     sorted(data, key=lambda x: x[0], reverse=True)
@@ -41,21 +41,20 @@ def load_pose_graspnet_baseline(pose_path):
     centers = data[:, 13:16]
     poses = []
     for index, rot in enumerate(rotation_matrix):
-        # quat = ut.rot2quat(rot)
         approaching_vec = get_approaching_vec(rot, up_vector=[1, 0, 0])
         poses.append([centers[index], rot, approaching_vec])
 
-    # see why we do the rotation and offset in util.py -> get_control_points()
+    # see why we do the rotation and offset in util.py -> get_grasp_points()
     for pose in poses:
         rot = pose[1]
         te_1 = ut.euler2rot(np.array([0, np.pi / 2, 0]))
         te_2 = ut.euler2rot(np.array([np.pi / 2, 0, 0]))
         final_rot = np.dot(np.dot(rot, te_2), te_1)
-        pose[1] = final_rot
+        pose[1] = ut.to_quat(final_rot)
 
     offset_along_ori = 0.02
     for center, _, vec in poses:
-        center += pos_offset_along_ori(vec, offset_along_ori)
+        center += pos_offset_along_approach_vec(vec, offset_along_ori)
     return poses, scores
 
 
@@ -66,24 +65,24 @@ def load_pose_6dofgraspnet(pose_path):
      pos is bottom point, ori is rotation matrix
     Args:
         pose_path: str, grasp pose and score, .npy file
-    Returns: poses(rotation matrix, center, approaching vec)(format is customized in get_grasp_points()), score
+    Returns: poses(quaternion, center, approaching vec)(format is customized in get_grasp_points()), score
     """
 
-    data = np.load(pose_path).item()
+    data = np.load(pose_path, allow_pickle=True).item()
     grasps = data['grasp']
     scores = data['score']
     poses = []
     for pose in grasps:
         center = np.array(pose[:3, 3])
-        rot = pose[:3, :3]
-        approching_vec = get_approaching_vec(rot)
-        poses.append([center, rot, approching_vec])
+        quat = ut.to_quat(pose[:3, :3])
+        approching_vec = get_approaching_vec(quat)
+        poses.append([center, quat, approching_vec])
 
     # center is bottom point, change it to center of two contact points, offset=0.10527 is the distance from bottom
     # point to center of two contact points, you can see comments of util.py -> get_grasp_points() for details
     offset_along_ori = 0.10527
     for center, _, vec in poses:
-        center += pos_offset_along_ori(vec, offset_along_ori)
+        center += pos_offset_along_approach_vec(vec, offset_along_ori)
     return poses, scores
 
 
@@ -94,7 +93,7 @@ def load_pose_GPNet(pose_path):
     for GPNet repository, the return hasn't contain scores currently
     Args:
         pose_path: str, grasp pose txt file path or npy file path
-    Returns:  poses(rotation matrix, center, approaching vec)(format is customized in get_grasp_points()), score
+    Returns:  poses(quaternion, center, approaching vec)(format is customized in get_grasp_points()), score
     """
 
     poses = []
@@ -102,8 +101,8 @@ def load_pose_GPNet(pose_path):
     data = np.load(pose_path)
     for center, quat in data:
         approching_vec = get_approaching_vec(quat)
-        rot = ut.to_rot_mat(quat)
-        poses.append([center, rot, approching_vec])
+        quat = ut.to_quat(quat)
+        poses.append([center, quat, approching_vec])
     return poses, None
 
 
@@ -203,13 +202,15 @@ def get_grasp_points():
                 line: [0.0526874, 0, 0.059] [-0.0526874, 0, 0.059]
                 bottom point: [0, 0, 0]
          For the above two files, the two-fingers plane is x-z plane.
-         For customized version, center (two contact points center) is [0, 0, 0], bottom point is [0, 0, -0.105]
+         For customized version, center (two contact points center) is [0, 0, 0], bottom point is [0, 0, -0.105],
+            and rotation is consistent with gripper in pybullet
          For panda version, bottom point is [0, 0, 0], center of two contact points is [0, 0, 0.10527];
 
-            1. grasp poses generate by GPNet: pos is center of two contact points; rotation is for gripper in x-z plane
+            1. grasp poses generate by GPNet: pos is center of two contact points; rotation is for gripper in x-z plane,
+         towards z-axis
             2. grasp poses generated by 6dof-graspnet: pos is bottom point of panda, offset is 0.10527, from bottom
          point to the center of two contacted points along approaching vector, rotation is for gripper in x-z plane,
-         so in load_pose_6dofgraspnet(), we add offset to the original poses.
+         towards z-axis, so in load_pose_6dofgraspnet(), I add offset to the original poses.
             3. grasp poses generated by graspnet-baseline: pos is 0.02 away from center of two contact points in the
          opposite direction of the approaching vector. rotation is for gripper in x-y plane, towards x-axis, so in
          load_pose_graspnet_baseline(), I add rotation and offset to the original poses.
