@@ -150,7 +150,7 @@ def auto_control(args, obj_id=None):
         poses, scores = load_pose_GPNet(os.path.join(args.data_path, args.pose_file))
     elif args.method == '6dof-graspnet':
         poses, scores = load_pose_6dofgraspnet(os.path.join(args.data_path, args.pose_file))
-    elif args.method == 'grapsnet_baseline':
+    elif args.method == 'graspnet_baseline':
         poses, scores = load_pose_graspnet_baseline(os.path.join(args.data_path, args.pose_file))
     else:
         raise NotImplementedError

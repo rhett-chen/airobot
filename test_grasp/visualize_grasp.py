@@ -14,7 +14,10 @@ def main():
     elif args.method == '6dof-graspnet':
         grasp_poses, grasp_scores = load_pose_6dofgraspnet(os.path.join(args.data_path, args.pose_file))
     elif args.method == 'graspnet_baseline':
-        grasp_poses, grasp_scores = load_pose_graspnet_baseline(os.path.join(args.data_path, args.pose_file))
+        if args.vis_method == 'mayavi':
+            grasp_poses, grasp_scores = load_pose_graspnet_baseline(os.path.join(args.data_path, args.pose_file))
+        else:
+            grasp_poses, grasp_scores = None, None
     else:
         raise NotImplementedError
     print('load %s successfully' % os.path.join(args.data_path, args.pose_file))
@@ -42,17 +45,20 @@ def main():
         color = np.array(Image.open(os.path.join(args.data_path, 'rgb.jpg')), dtype=np.float32) / 255.0
         color = color.reshape((-1, 3))
         gg_array = []
-        offset_along_approach_vec = -0.02
-        for index, pose in enumerate(grasp_poses):
-            center = pose[0] + pos_offset_along_approach_vec(pose[2], offset_along_approach_vec)
-            rot = ut.to_rot_mat(pose[1])
-            te_1 = ut.euler2rot(np.array([0, -np.pi / 2, 0]))
-            te_2 = ut.euler2rot(np.array([0, 0, np.pi / 2]))
-            final_rot = np.dot(np.dot(rot, te_2), te_1)
-            # grasp pose format is recorded in https://graspnetapi.readthedocs.io/en/latest/grasp_format.html
-            te = [1, 0.065, 0.02, 0.02] if grasp_scores is None else [grasp_scores[index], 0.1, 0.02, 0.02]
-            te = te + list(final_rot.flatten()) + list(center) + [-1]
-            gg_array.append(te)
+        if args.method == 'graspnet_baseline':
+            gg_array = np.load(os.path.join(args.data_path, args.pose_file))
+        else:
+            offset_along_approach_vec = -0.02
+            for index, pose in enumerate(grasp_poses):
+                center = pose[0] + pos_offset_along_approach_vec(pose[2], offset_along_approach_vec)
+                rot = ut.to_rot_mat(pose[1])
+                te_1 = ut.euler2rot(np.array([0, -np.pi / 2, 0]))
+                te_2 = ut.euler2rot(np.array([0, 0, np.pi / 2]))
+                final_rot = np.dot(np.dot(rot, te_2), te_1)
+                # grasp pose format is recorded in https://graspnetapi.readthedocs.io/en/latest/grasp_format.html
+                te = [1, 0.065, 0.02, 0.02] if grasp_scores is None else [grasp_scores[index], 0.1, 0.02, 0.02]
+                te = te + list(final_rot.flatten()) + list(center) + [-1]
+                gg_array.append(te)
         gg = GraspGroup(np.array(gg_array))
         gg.nms()
         gg.sort_by_score()  # red for high score, blue for low
